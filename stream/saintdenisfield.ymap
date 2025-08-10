@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<CMapData>
+    <flags value="2"/>
+    <contentFlags value="65"/>
+    <streamingExtentsMin x="2227.017822" y="-1219.210571" z="-358.646057"/>
+    <streamingExtentsMax x="3101.456299" y="-343.174683" z="441.420864"/>
+    <entitiesExtentsMin x="2577.017822" y="-869.210571" z="-8.646057"/>
+    <entitiesExtentsMax x="2751.456299" y="-693.174683" z="91.420864"/>
+    <entities>
+        <Item type="CEntityDef">
+            <archetypeName>p_wellpumpnbx01x</archetypeName>
+            <flags value="1572897"/>
+            <position x="2701.456299" y="-783.491455" z="41.353943"/>
+            <rotation w="0.844849" x="-0.013293" y="0.031933" z="0.533885"/>
+            <scaleXY value="1"/>
+            <scaleZ value="1"/>
+            <parentIndex value="-1"/>
+            <lodDist value="150"/>
+            <childLodDist value="0"/>
+            <lodLevel>LODTYPES_DEPTH_HD</lodLevel>
+            <numChildren value="0"/>
+            <ambientOcclusionMultiplier value="255"/>
+            <artificialAmbientOcclusion value="255"/>
+        </Item>
+        <Item type="CEntityDef">
+            <archetypeName>p_wellpumpnbx01x</archetypeName>
+            <flags value="1572897"/>
+            <position x="2627.017822" y="-748.702148" z="41.374100"/>
+            <rotation w="0.939779" x="-0.038604" y="-0.005302" z="-0.339554"/>
+            <scaleXY value="1"/>
+            <scaleZ value="1"/>
+            <parentIndex value="-1"/>
+            <lodDist value="150"/>
+            <childLodDist value="0"/>
+            <lodLevel>LODTYPES_DEPTH_HD</lodLevel>
+            <numChildren value="0"/>
+            <ambientOcclusionMultiplier value="255"/>
+            <artificialAmbientOcclusion value="255"/>
+        </Item>
+        <Item type="CEntityDef">
+            <archetypeName>p_wellpumpnbx01x</archetypeName>
+            <flags value="1572897"/>
+            <position x="2652.373535" y="-819.210571" z="41.382641"/>
+            <rotation w="0.223986" x="0.000000" y="0.000000" z="0.974592"/>
+            <scaleXY value="1"/>
+            <scaleZ value="1"/>
+            <parentIndex value="-1"/>
+            <lodDist value="150"/>
+            <childLodDist value="0"/>
+            <lodLevel>LODTYPES_DEPTH_HD</lodLevel>
+            <numChildren value="0"/>
+            <ambientOcclusionMultiplier value="255"/>
+            <artificialAmbientOcclusion value="255"/>
+        </Item>
+        <Item type="CEntityDef">
+            <archetypeName>p_wellpumpnbx01x</archetypeName>
+            <flags value="1572897"/>
+            <position x="2663.819336" y="-743.174683" z="41.356907"/>
+            <rotation w="0.996170" x="-0.016978" y="0.038801" z="0.076495"/>
+            <scaleXY value="1"/>
+            <scaleZ value="1"/>
+            <parentIndex value="-1"/>
+            <lodDist value="150"/>
+            <childLodDist value="0"/>
+            <lodLevel>LODTYPES_DEPTH_HD</lodLevel>
+            <numChildren value="0"/>
+            <ambientOcclusionMultiplier value="255"/>
+            <artificialAmbientOcclusion value="255"/>
+        </Item>
+        <Item type="CEntityDef">
+            <archetypeName>p_wellpumpnbx01x</archetypeName>
+            <flags value="1572897"/>
+            <position x="2678.944824" y="-807.290527" z="41.420864"/>
+            <rotation w="0.215659" x="0.000000" y="0.000000" z="0.976469"/>
+            <scaleXY value="1"/>
+            <scaleZ value="1"/>
+            <parentIndex value="-1"/>
+            <lodDist value="150"/>
+            <childLodDist value="0"/>
+            <lodLevel>LODTYPES_DEPTH_HD</lodLevel>
+            <numChildren value="0"/>
+            <ambientOcclusionMultiplier value="255"/>
+            <artificialAmbientOcclusion value="255"/>
+        </Item>
+        <Item type="CEntityDef">
+            <archetypeName>p_wellpumpnbx01x</archetypeName>
+            <flags value="1572897"/>
+            <position x="2689.384033" y="-758.938843" z="41.374840"/>
+            <rotation w="0.875069" x="0.000000" y="0.000000" z="0.483998"/>
+            <scaleXY value="1"/>
+            <scaleZ value="1"/>
+            <parentIndex value="-1"/>
+            <lodDist value="150"/>
+            <childLodDist value="0"/>
+            <lodLevel>LODTYPES_DEPTH_HD</lodLevel>
+            <numChildren value="0"/>
+            <ambientOcclusionMultiplier value="255"/>
+            <artificialAmbientOcclusion value="255"/>
+        </Item>
+    </entities>
+</CMapData>
