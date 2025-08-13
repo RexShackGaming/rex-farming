@@ -43,7 +43,7 @@ Config.CollectWaterTime  = 5000 -- time set to collect water (msec)
 Config.CollectFertilizerTime = 5000 -- time set to collect fertilizer (msec)
 Config.FarmingCronJob    = '*/1 * * * *' -- cronjob time runs every 1 mins
 Config.EnableServerNotify = false -- toggle this to true if you want to see server notifications
-
+Config.OwnerHarvestOnly = true
 ---------------------------------
 -- weather settings
 ---------------------------------
