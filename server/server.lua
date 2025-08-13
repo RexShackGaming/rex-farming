@@ -289,7 +289,7 @@ AddEventHandler('rex-farming:server:harvestPlant', function(plantId)
                     end
                 end
             else
-                TriggerClientEvent('ox_lib:notify', src, {title = 'You don\'t own this plant', type = 'error', duration = 7000 })
+                TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_9'), type = 'error', duration = 7000 })
                 return
             end
         end
