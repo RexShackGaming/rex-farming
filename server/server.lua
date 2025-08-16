@@ -102,8 +102,7 @@ end)
 -----------------------------------------------------------------------
 
 -- remove item
-RegisterServerEvent('rex-farming:server:removeitem')
-AddEventHandler('rex-farming:server:removeitem', function(item, amount)
+RegisterNetEvent('rex-farming:server:removeitem', function(item, amount)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
@@ -112,8 +111,7 @@ AddEventHandler('rex-farming:server:removeitem', function(item, amount)
 end)
 
 -- add item
-RegisterServerEvent('rex-farming:server:giveitem')
-AddEventHandler('rex-farming:server:giveitem', function(item, amount)
+RegisterNetEvent('rex-farming:server:giveitem', function(item, amount)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end

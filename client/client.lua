@@ -112,15 +112,9 @@ CreateThread(function()
             end
 
             local planthash = stageplanthash
-            local phash = GetHashKey(planthash)
+            local phash = joaat(planthash)
+            lib.requestModel(phash, 5000)
             local data = {}
-
-            while not HasModelLoaded(phash) do
-                Wait(10)
-                RequestModel(phash)
-            end
-
-            RequestModel(phash)
             data.id = Config.FarmPlants[i].id
             data.stage = Config.FarmPlants[i].stage
             data.obj = CreateObject(phash, Config.FarmPlants[i].x, Config.FarmPlants[i].y, Config.FarmPlants[i].z, false, false, false)
