@@ -101,22 +101,30 @@ end)
 
 -----------------------------------------------------------------------
 
--- remove item
+---Removes an item from the player's inventory.
+---@param item string the name of the item to remove.
+---@param amount number the number of items to remove.
 RegisterNetEvent('rex-farming:server:removeitem', function(item, amount)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
-    if not Player then return end
-    Player.Functions.RemoveItem(item, amount)
-    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'remove', amount)
+    if not Player or not item or not amount then return end
+
+    if Player.Functions.RemoveItem(item, amount) then
+        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'remove', amount)
+    end
 end)
 
--- add item
+---Adds an item from the player's inventory.
+---@param item string the name of the item to add.
+---@param amount number the number of items to add.
 RegisterNetEvent('rex-farming:server:giveitem', function(item, amount)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
-    if not Player then return end
-    Player.Functions.AddItem(item, amount)
-    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', amount)
+    if not Player or not item or not amount then return end
+
+    if Player.Functions.AddItem(item, amount) then
+        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', amount)
+    end
 end)
 
 -----------------------------------------------------------------------
