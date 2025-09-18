@@ -16,7 +16,7 @@
     potatoseed    = { name = 'potatoseed',    label = 'Potato Seed',        weight = 100, type = 'item', image = 'potatoseed.png',       unique = false, useable = true, shouldClose = true, description = 'placeholder' },
     potato        = { name = 'potato',        label = 'Potato',             weight = 100, type = 'item', image = 'potato.png',           unique = false, useable = false, shouldClose = true, description = 'placeholder' },
     tomatoseed    = { name = 'tomatoseed',    label = 'Tomato Seed',        weight = 100, type = 'item', image = 'tomatoseed.png',       unique = false, useable = true, shouldClose = true, description = 'placeholder' },
-    tomato        = { name = 'tomato',        label = 'Totato',             weight = 100, type = 'item', image = 'tomato.png',           unique = false, useable = false, shouldClose = true, description = 'placeholder' },
+    tomato        = { name = 'tomato',        label = 'Tomato',             weight = 100, type = 'item', image = 'tomato.png',           unique = false, useable = false, shouldClose = true, description = 'placeholder' },
     wheatseed     = { name = 'wheatseed',     label = 'Wheat Seed',         weight = 100, type = 'item', image = 'wheatseed.png',        unique = false, useable = true, shouldClose = true, description = 'placeholder' },
     wheat         = { name = 'wheat',         label = 'Wheat',              weight = 100, type = 'item', image = 'wheat.png',            unique = false, useable = false, shouldClose = true, description = 'placeholder' },
     fertilizer    = { name = 'fertilizer',    label = 'Fertilizer',         weight = 100, type = 'item', image = 'fertilizer.png',       unique = false, useable = false, shouldClose = true, description = 'placeholder' },
