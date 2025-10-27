@@ -10,99 +10,89 @@ local Props = {}
 
 local PromptPlacerGroup = GetRandomIntInRange(0, 0xffffff)
 
-Citizen.CreateThread(function()
-    Set()
-    Del()
-    RotateLeft()
-    RotateRight()
+-- Optimized prompt initialization - run once instead of multiple threads
+local function InitializePrompts()
+    -- Cancel Prompt
+    local str = CreateVarString(10, 'LITERAL_STRING', Config.PromptCancelName)
+    CancelPrompt = PromptRegisterBegin()
+    PromptSetControlAction(CancelPrompt, 0xF84FA74F)
+    PromptSetText(CancelPrompt, str)
+    PromptSetEnabled(CancelPrompt, true)
+    PromptSetVisible(CancelPrompt, true)
+    PromptSetHoldMode(CancelPrompt, true)
+    PromptSetGroup(CancelPrompt, PromptPlacerGroup)
+    PromptRegisterEnd(CancelPrompt)
+    
+    -- Place Prompt
+    str = CreateVarString(10, 'LITERAL_STRING', Config.PromptPlaceName)
+    SetPrompt = PromptRegisterBegin()
+    PromptSetControlAction(SetPrompt, 0xC7B5340A)
+    PromptSetText(SetPrompt, str)
+    PromptSetEnabled(SetPrompt, true)
+    PromptSetVisible(SetPrompt, true)
+    PromptSetHoldMode(SetPrompt, true)
+    PromptSetGroup(SetPrompt, PromptPlacerGroup)
+    PromptRegisterEnd(SetPrompt)
+    
+    -- Rotate Left Prompt
+    str = CreateVarString(10, 'LITERAL_STRING', Config.PromptRotateLeft)
+    RotateLeftPrompt = PromptRegisterBegin()
+    PromptSetControlAction(RotateLeftPrompt, 0xA65EBAB4)
+    PromptSetText(RotateLeftPrompt, str)
+    PromptSetEnabled(RotateLeftPrompt, true)
+    PromptSetVisible(RotateLeftPrompt, true)
+    PromptSetStandardMode(RotateLeftPrompt, true)
+    PromptSetGroup(RotateLeftPrompt, PromptPlacerGroup)
+    PromptRegisterEnd(RotateLeftPrompt)
+    
+    -- Rotate Right Prompt
+    str = CreateVarString(10, 'LITERAL_STRING', Config.PromptRotateRight)
+    RotateRightPrompt = PromptRegisterBegin()
+    PromptSetControlAction(RotateRightPrompt, 0xDEB34313)
+    PromptSetText(RotateRightPrompt, str)
+    PromptSetEnabled(RotateRightPrompt, true)
+    PromptSetVisible(RotateRightPrompt, true)
+    PromptSetStandardMode(RotateRightPrompt, true)
+    PromptSetGroup(RotateRightPrompt, PromptPlacerGroup)
+    PromptRegisterEnd(RotateRightPrompt)
+end
+
+CreateThread(function()
+    InitializePrompts()
 end)
 
-function Del()
-    Citizen.CreateThread(function()
-        local str = Config.PromptCancelName
-        CancelPrompt = PromptRegisterBegin()
-        PromptSetControlAction(CancelPrompt, 0xF84FA74F)
-        str = CreateVarString(10, 'LITERAL_STRING', str)
-        PromptSetText(CancelPrompt, str)
-        PromptSetEnabled(CancelPrompt, true)
-        PromptSetVisible(CancelPrompt, true)
-        PromptSetHoldMode(CancelPrompt, true)
-        PromptSetGroup(CancelPrompt, PromptPlacerGroup)
-        PromptRegisterEnd(CancelPrompt)
-    end)
-end
-
-function Set()
-    Citizen.CreateThread(function()
-        local str = Config.PromptPlaceName
-        SetPrompt = PromptRegisterBegin()
-        PromptSetControlAction(SetPrompt, 0xC7B5340A)
-        str = CreateVarString(10, 'LITERAL_STRING', str)
-        PromptSetText(SetPrompt, str)
-        PromptSetEnabled(SetPrompt, true)
-        PromptSetVisible(SetPrompt, true)
-        PromptSetHoldMode(SetPrompt, true)
-        PromptSetGroup(SetPrompt, PromptPlacerGroup)
-        PromptRegisterEnd(SetPrompt)
-    end)
-end
-
-function RotateLeft()
-    Citizen.CreateThread(function()
-        local str = Config.PromptRotateLeft
-        RotateLeftPrompt = PromptRegisterBegin()
-        PromptSetControlAction(RotateLeftPrompt, 0xA65EBAB4)
-        str = CreateVarString(10, 'LITERAL_STRING', str)
-        PromptSetText(RotateLeftPrompt, str)
-        PromptSetEnabled(RotateLeftPrompt, true)
-        PromptSetVisible(RotateLeftPrompt, true)
-        PromptSetStandardMode(RotateLeftPrompt, true)
-        PromptSetGroup(RotateLeftPrompt, PromptPlacerGroup)
-        PromptRegisterEnd(RotateLeftPrompt)
-    end)
-end
-
-function RotateRight()
-    Citizen.CreateThread(function()
-        local str = Config.PromptRotateRight
-        RotateRightPrompt = PromptRegisterBegin()
-        PromptSetControlAction(RotateRightPrompt, 0xDEB34313)
-        str = CreateVarString(10, 'LITERAL_STRING', str)
-        PromptSetText(RotateRightPrompt, str)
-        PromptSetEnabled(RotateRightPrompt, true)
-        PromptSetVisible(RotateRightPrompt, true)
-        PromptSetStandardMode(RotateRightPrompt, true)
-        PromptSetGroup(RotateRightPrompt, PromptPlacerGroup)
-        PromptRegisterEnd(RotateRightPrompt)
-
-    end)
-end
-
-function modelrequest( model )
-    Citizen.CreateThread(function()
-        RequestModel( model )
-    end)
+-- Optimized model request
+local function RequestAndLoadModel(model)
+    if not HasModelLoaded(model) then
+        RequestModel(model)
+        local timeout = 0
+        while not HasModelLoaded(model) and timeout < 10 do
+            Wait(500)
+            timeout = timeout + 1
+        end
+        if not HasModelLoaded(model) then
+            return false
+        end
+    end
+    return true
 end
 
 function PropPlacer(outputitem, prophash1, prophash2, prophash3, inputitem)
-    local myPed = PlayerPedId()
-    local pHead = GetEntityHeading(myPed)
+    local myPed = cache.ped or PlayerPedId()
     local pos = GetEntityCoords(myPed)
     local PropHash = prophash1
-    local coords = GetEntityCoords(myPed)
-    local _x,_y,_z = table.unpack(coords)
     local forward = GetEntityForwardVector(myPed)
-    local x, y, z = table.unpack(pos - forward * -Config.ForwardDistance)
-    local ox = x -_x
-    local oy = y-_y
-    local oz = z - _z
+    local targetPos = pos - forward * -Config.ForwardDistance
+    local ox = targetPos.x - pos.x
+    local oy = targetPos.y - pos.y
     local propheading = 0.0
-    local object
 
-    SetCurrentPedWeapon(myPed, -1569615261, true)
-    while not HasModelLoaded( PropHash ) do
-        Wait(500)
-        modelrequest( PropHash )
+    SetCurrentPedWeapon(myPed, `WEAPON_UNARMED`, true)
+    
+    -- Request model with timeout
+    if not RequestAndLoadModel(PropHash) then
+        lib.notify({ title = locale('cl_lang_49'), type = 'error', duration = 5000 })
+        return
     end
     local tempObj = CreateObject(PropHash, pos.x, pos.y, pos.z, false, false, false)
     local tempObj2 = CreateObject(PropHash, pos.x, pos.y, pos.z, false, false, false)

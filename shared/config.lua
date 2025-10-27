@@ -2,9 +2,9 @@ Config = Config or {}
 Config.FarmPlants = {}
 
 ---------------------------------------------
--- pland seed settings
+-- Plant Seed Placement Settings
 ---------------------------------------------
-Config.ForwardDistance   = 2.0
+Config.ForwardDistance   = 2.0  -- Distance in front of player to place plant
 Config.PromptGroupName   = 'Plant Seedling'
 Config.PromptCancelName  = 'Cancel'
 Config.PromptPlaceName   = 'Plant'
@@ -12,38 +12,58 @@ Config.PromptRotateLeft  = 'Rotate Left'
 Config.PromptRotateRight = 'Rotate Right'
 
 ---------------------------------
--- npc settings
+-- NPC Settings (if applicable)
 ---------------------------------
-Config.DistanceSpawn = 20.0
-Config.FadeIn = true
+Config.DistanceSpawn = 20.0  -- Distance for NPC spawn
+Config.FadeIn = true         -- Enable NPC fade in effect
 
 ---------------------------------
--- general settings
+-- General Farming Settings
 ---------------------------------
-Config.GrowAnywhere      = true -- toggle between planting anywhere or farming fields
-Config.RestrictTownPlanting = true -- toggle if you allow planting in towns (default is true)
-Config.DeadPlantTime     = 60 * 60 * 72 -- time until plant is dead and removed from db - e.g. 60 * 60 * 24 for 1 day / 60 * 60 * 48 for 2 days / 60 * 60 * 72 for 3 days
+Config.GrowAnywhere      = true  -- Allow planting anywhere (false = only in designated farming zones)
+Config.RestrictTownPlanting = true  -- Prevent planting in town zones
+Config.DeadPlantTime     = 60 * 60 * 72  -- Time until plant dies and is removed (3 days)
+Config.MaxPlantCount     = 100  -- Maximum plants per player
+Config.OwnerHarvestOnly  = true  -- Only plant owner can harvest
+Config.EnableServerNotify = false  -- Enable server console notifications for debugging
+
 ---------------------------------
-Config.StartingThirst    = 30 -- starting plant thirst percentage
-Config.ThirstIncrease    = 100 -- amount of thirst increased when water is used
-Config.ThirstDecrease    = 1 -- amount of thirst decreases per cycle
+-- Plant Thirst System
 ---------------------------------
-Config.StartingHunger    = 30 -- starting plant hunger percentage
-Config.HungerIncrease    = 100 -- amount of hunger increased when fertilizer is used
-Config.HungerDecrease    = 1 -- amount of hunger decreases per cycle
+Config.StartingThirst    = 30   -- Starting plant thirst percentage (0-100)
+Config.ThirstIncrease    = 100  -- Thirst gained when watered
+Config.ThirstDecrease    = 1    -- Thirst lost per growth cycle
+Config.StartDegrade      = 25   -- Thirst level where quality starts degrading
+
 ---------------------------------
-Config.GrowthIncrease    = 1 -- amount growth increases per cycle
-Config.GrowthBoostMin    = 1 -- min amount of growth increases per cycle (with fertilizer)
-Config.GrowthBoostMax    = 3 -- min amount of growth increases per cycle (with fertilizer)
+-- Plant Hunger System
 ---------------------------------
-Config.StartDegrade      = 25 -- thirst below number when plant degrades
-Config.QualityDegrade    = 5 -- amount of degarde of quality per cycle if below thrist limit
-Config.MaxPlantCount     = 100 -- maximum plants player can have at any one time
-Config.CollectWaterTime  = 5000 -- time set to collect water (msec)
-Config.CollectFertilizerTime = 5000 -- time set to collect fertilizer (msec)
-Config.FarmingCronJob    = '*/1 * * * *' -- cronjob time runs every 1 mins
-Config.EnableServerNotify = false -- toggle this to true if you want to see server notifications
-Config.OwnerHarvestOnly = true
+Config.StartingHunger    = 30   -- Starting plant hunger percentage (0-100)
+Config.HungerIncrease    = 100  -- Hunger gained when fertilized
+Config.HungerDecrease    = 1    -- Hunger lost per growth cycle
+
+---------------------------------
+-- Plant Growth System
+---------------------------------
+Config.GrowthIncrease    = 1    -- Base growth per cycle
+Config.GrowthBoostMin    = 1    -- Min bonus growth with fertilizer
+Config.GrowthBoostMax    = 3    -- Max bonus growth with fertilizer
+
+---------------------------------
+-- Plant Quality System
+---------------------------------
+Config.QualityDegrade    = 5    -- Quality lost per cycle when thirst is low
+
+---------------------------------
+-- Collection Times (milliseconds)
+---------------------------------
+Config.CollectWaterTime  = 5000      -- Time to collect water (5 seconds)
+Config.CollectFertilizerTime = 5000  -- Time to collect fertilizer (5 seconds)
+
+---------------------------------
+-- Cron Job Settings
+---------------------------------
+Config.FarmingCronJob    = '*/1 * * * *'  -- Growth cycle runs every 1 minute
 ---------------------------------
 -- weather settings
 ---------------------------------

@@ -3,11 +3,11 @@ rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aw
 game 'rdr3'
 
 description 'rex-farming'
-version '2.1.2'
+version '2.1.3'
 
 shared_scripts {
     '@ox_lib/init.lua',
-    'config.lua',
+    'shared/config.lua',
 }
 
 client_scripts {
@@ -45,3 +45,10 @@ data_file 'DLC_ITYP_REQUEST' 'stream/prop_weed_ytyp.ytyp'
 this_is_a_map 'yes'
 
 lua54 'yes'
+
+escrow_ignore {
+    'installation/*',
+    'locales/*',
+    'shared/*',
+    'README.md'
+}

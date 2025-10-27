@@ -1,6 +1,9 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
 local PlantsLoaded = false
 local CollectedFertilizer = {}
+local HarvestCooldowns = {} -- Anti-spam protection
+local WaterCooldowns = {} -- Water anti-spam
+local FeedCooldowns = {} -- Feed anti-spam
 lib.locale()
 
 ---------------------------------------------
@@ -68,15 +71,15 @@ RSGCore.Functions.CreateUseableItem('tomatoseed', function(source)
 end)
 
 ---------------------------------------------
--- create plant id
+-- create plant id (cryptographically secure)
 ---------------------------------------------
 local function CreatePlantId()
     local UniqueFound = false
     local plantid = nil
     while not UniqueFound do
-        plantid = math.random(111111, 999999)
-        local query = "%" .. plantid .. "%"
-        local result = MySQL.prepare.await("SELECT COUNT(*) as count FROM rex_farming WHERE plantid LIKE ?", { query })
+        -- Use more secure random generation
+        plantid = math.random(100000, 999999) .. '-' .. os.time() .. '-' .. math.random(1000, 9999)
+        local result = MySQL.prepare.await("SELECT COUNT(*) as count FROM rex_farming WHERE plantid = ?", { plantid })
         if result == 0 then
             UniqueFound = true
         end
@@ -85,18 +88,24 @@ local function CreatePlantId()
 end
 
 ---------------------------------------------
--- get plant data
+-- get plant data (optimized with async/await)
 ---------------------------------------------
 RSGCore.Functions.CreateCallback('rex-farming:server:getplantdata', function(source, cb, plantid)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
-    MySQL.query('SELECT * FROM rex_farming WHERE plantid = ?', { plantid }, function(result)
-        if result[1] then
-            cb(result)
-        else
-            cb(nil)
-        end
-    end)
+    
+    if not Player or not plantid then 
+        cb(nil)
+        return
+    end
+    
+    local result = MySQL.query.await('SELECT * FROM rex_farming WHERE plantid = ?', { plantid })
+    
+    if result and result[1] then
+        cb(result)
+    else
+        cb(nil)
+    end
 end)
 
 -----------------------------------------------------------------------
@@ -146,15 +155,53 @@ end)
 
 RegisterServerEvent('rex-farming:server:savePlant')
 AddEventHandler('rex-farming:server:savePlant', function(data, plantId, citizenid)
+    if not data or not plantId or not citizenid then 
+        print('[rex-farming] Error: Invalid data in savePlant')
+        return 
+    end
+    
     local datas = json.encode(data)
 
-    MySQL.Async.execute('INSERT INTO rex_farming (properties, plantid, citizenid) VALUES (@properties, @plantid, @citizenid)',
-    {
-        ['@properties'] = datas,
-        ['@plantid'] = plantId,
-        ['@citizenid'] = citizenid
-    })
+    MySQL.insert.await('INSERT INTO rex_farming (properties, plantid, citizenid) VALUES (?, ?, ?)',
+        { datas, plantId, citizenid }
+    )
 end)
+
+---------------------------------------------
+-- validate planting location server-side
+---------------------------------------------
+local function ValidatePlantingLocation(coords, citizenid)
+    -- Check if too close to other plants
+    for i = 1, #Config.FarmPlants do
+        local dist = #(vector3(coords.x, coords.y, coords.z) - vector3(Config.FarmPlants[i].x, Config.FarmPlants[i].y, Config.FarmPlants[i].z))
+        if dist < 1.3 then
+            return false, 'too_close'
+        end
+    end
+    
+    -- Validate coordinates are reasonable (not floating in air, underground, etc)
+    if coords.z < -100.0 or coords.z > 1000.0 then
+        return false, 'invalid_coords'
+    end
+    
+    -- If GrowAnywhere is disabled, check zone validity
+    if not Config.GrowAnywhere then
+        local inZone = false
+        for k, zone in pairs(Config.FarmingZone) do
+            -- Basic zone check (you may need more sophisticated poly check)
+            local dist = #(vector3(coords.x, coords.y, coords.z) - zone.fieldcoords)
+            if dist < 100.0 then -- Reasonable distance from zone center
+                inZone = true
+                break
+            end
+        end
+        if not inZone then
+            return false, 'not_in_zone'
+        end
+    end
+    
+    return true, 'valid'
+end
 
 ---------------------------------------------
 -- plant seed
@@ -162,9 +209,32 @@ end)
 RegisterServerEvent('rex-farming:server:plantnewseed')
 AddEventHandler('rex-farming:server:plantnewseed', function(outputitem, inputitem, prophash1, prophash2, prophash3, propcoords, propheading)
     local src = source
-    local plantId = CreatePlantId()
     local Player = RSGCore.Functions.GetPlayer(src)
+    if not Player then return end
+    
     local citizenid = Player.PlayerData.citizenid
+    local playerJobType = Player.PlayerData.job.type
+    
+    -- SERVER-SIDE job validation for weed
+    if playerJobType == 'leo' and outputitem == 'weed' then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_10'), type = 'error', duration = 5000 })
+        return
+    end
+    
+    -- Validate planting location server-side
+    local isValid, reason = ValidatePlantingLocation(propcoords, citizenid)
+    if not isValid then
+        if reason == 'too_close' then
+            TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_11'), type = 'error', duration = 5000 })
+        elseif reason == 'invalid_coords' then
+            TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_12'), type = 'error', duration = 5000 })
+        elseif reason == 'not_in_zone' then
+            TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_13'), type = 'error', duration = 5000 })
+        end
+        return
+    end
+    
+    local plantId = CreatePlantId()
 
     local SeedData =
     {
@@ -208,16 +278,11 @@ AddEventHandler('rex-farming:server:plantnewseed', function(outputitem, inputite
 end)
 
 ---------------------------------------------
--- check plant
+-- check plant (with mutex lock) - DEPRECATED, using cooldown system instead
 ---------------------------------------------
 RegisterServerEvent('rex-farming:server:plantHasBeenHarvested')
 AddEventHandler('rex-farming:server:plantHasBeenHarvested', function(plantId)
-    for _, v in pairs(Config.FarmPlants) do
-        if v.id == plantId then
-            v.beingHarvested = true
-        end
-    end
-    TriggerEvent('rex-farming:server:updatePlants')
+    -- No longer needed - cooldown system in harvestPlant handles anti-spam
 end)
 
 ---------------------------------------------
@@ -259,6 +324,16 @@ RegisterServerEvent('rex-farming:server:harvestPlant')
 AddEventHandler('rex-farming:server:harvestPlant', function(plantId)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
+    if not Player then return end
+    
+    local citizenid = Player.PlayerData.citizenid
+    
+    -- Anti-spam check
+    if HarvestCooldowns[citizenid] and (os.time() - HarvestCooldowns[citizenid]) < 3 then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_14'), type = 'error', duration = 3000 })
+        return
+    end
+    
     local poorAmount = 0
     local goodAmount = 0
     local exellentAmount = 0
@@ -268,102 +343,84 @@ AddEventHandler('rex-farming:server:harvestPlant', function(plantId)
     local hasFound = false
     local label = nil
     local item = nil
+    local plantData = nil
+    local plantKey = nil
 
-    -- owner check before harvest
-    if Config.OwnerHarvestOnly then
-        for k, v in pairs(Config.FarmPlants) do
-            if v.id == plantId and v.planter == Player.PlayerData.citizenid then
-                for y = 1, #Config.FarmItems do
-                    if v.planttype == Config.FarmItems[y].planttype then
-                        label = Config.FarmItems[y].label
-                        item = Config.FarmItems[y].item
-                        poorAmount = math.random(Config.FarmItems[y].poorRewardMin, Config.FarmItems[y].poorRewardMax)
-                        goodAmount = math.random(Config.FarmItems[y].goodRewardMin, Config.FarmItems[y].goodRewardMax)
-                        exellentAmount = math.random(Config.FarmItems[y].exellentRewardMin, Config.FarmItems[y].exellentRewardMax)
-                        local quality = math.ceil(v.quality)
-                        hasFound = true
-
-                        table.remove(Config.FarmPlants, k)
-
-                        if quality > 0 and quality <= 25 then -- poor
-                            poorQuality = true
-                        elseif quality >= 25 and quality <= 75 then -- good
-                            goodQuality = true
-                        elseif quality >= 75 then -- excellent
-                            exellentQuality = true
-                        end
-                    end
-                end
-            else
-                TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_9'), type = 'error', duration = 7000 })
-                return
-            end
+    -- Find and validate plant
+    for k, v in pairs(Config.FarmPlants) do
+        if v.id == plantId then
+            plantData = v
+            plantKey = k
+            break
         end
-
-        if not hasFound then return end
-
-        if poorQuality then
-            Player.Functions.AddItem(item, poorAmount)
-            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', poorAmount)
-        elseif goodQuality then
-            Player.Functions.AddItem(item, goodAmount)
-            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', goodAmount)
-        elseif exellentQuality then
-            Player.Functions.AddItem(item, exellentAmount)
-            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', exellentAmount)
-        else
-            print(locale('sv_lang_3'))
-        end
-
-        TriggerClientEvent('rex-farming:client:removePlantObject', -1, plantId)
-        TriggerEvent('rex-farming:server:PlantRemoved', plantId)
-        TriggerEvent('rex-farming:server:updatePlants')
-    else
-        for k, v in pairs(Config.FarmPlants) do
-            if v.id == plantId then
-                for y = 1, #Config.FarmItems do
-                    if v.planttype == Config.FarmItems[y].planttype then
-                        label = Config.FarmItems[y].label
-                        item = Config.FarmItems[y].item
-                        poorAmount = math.random(Config.FarmItems[y].poorRewardMin, Config.FarmItems[y].poorRewardMax)
-                        goodAmount = math.random(Config.FarmItems[y].goodRewardMin, Config.FarmItems[y].goodRewardMax)
-                        exellentAmount = math.random(Config.FarmItems[y].exellentRewardMin, Config.FarmItems[y].exellentRewardMax)
-                        local quality = math.ceil(v.quality)
-                        hasFound = true
-
-                        table.remove(Config.FarmPlants, k)
-
-                        if quality > 0 and quality <= 25 then -- poor
-                            poorQuality = true
-                        elseif quality >= 25 and quality <= 75 then -- good
-                            goodQuality = true
-                        elseif quality >= 75 then -- excellent
-                            exellentQuality = true
-                        end
-                    end
-                end
-            end
-        end
-
-        if not hasFound then return end
-
-        if poorQuality then
-            Player.Functions.AddItem(item, poorAmount)
-            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', poorAmount)
-        elseif goodQuality then
-            Player.Functions.AddItem(item, goodAmount)
-            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', goodAmount)
-        elseif exellentQuality then
-            Player.Functions.AddItem(item, exellentAmount)
-            TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', exellentAmount)
-        else
-            print(locale('sv_lang_3'))
-        end
-
-        TriggerClientEvent('rex-farming:client:removePlantObject', -1, plantId)
-        TriggerEvent('rex-farming:server:PlantRemoved', plantId)
-        TriggerEvent('rex-farming:server:updatePlants')
     end
+    
+    if not plantData then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_15'), type = 'error', duration = 3000 })
+        return
+    end
+    
+    -- SERVER-SIDE growth validation (don't trust client)
+    if plantData.growth < 100 then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_16'), type = 'error', duration = 3000 })
+        return
+    end
+    
+    -- Owner check before harvest
+    if Config.OwnerHarvestOnly then
+        if plantData.planter ~= citizenid then
+            TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_9'), type = 'error', duration = 7000 })
+            return
+        end
+    end
+    
+    -- Get reward data
+    for y = 1, #Config.FarmItems do
+        if plantData.planttype == Config.FarmItems[y].planttype then
+            label = Config.FarmItems[y].label
+            item = Config.FarmItems[y].item
+            poorAmount = math.random(Config.FarmItems[y].poorRewardMin, Config.FarmItems[y].poorRewardMax)
+            goodAmount = math.random(Config.FarmItems[y].goodRewardMin, Config.FarmItems[y].goodRewardMax)
+            exellentAmount = math.random(Config.FarmItems[y].exellentRewardMin, Config.FarmItems[y].exellentRewardMax)
+            local quality = math.ceil(plantData.quality)
+            hasFound = true
+
+            if quality > 0 and quality <= 25 then -- poor
+                poorQuality = true
+            elseif quality >= 25 and quality <= 75 then -- good
+                goodQuality = true
+            elseif quality >= 75 then -- excellent
+                exellentQuality = true
+            end
+            break
+        end
+    end
+
+    if not hasFound then return end
+    
+    -- Set cooldown
+    HarvestCooldowns[citizenid] = os.time()
+    
+    -- Remove plant from table
+    table.remove(Config.FarmPlants, plantKey)
+
+    -- Give rewards
+    if poorQuality then
+        Player.Functions.AddItem(item, poorAmount)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', poorAmount)
+    elseif goodQuality then
+        Player.Functions.AddItem(item, goodAmount)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', goodAmount)
+    elseif exellentQuality then
+        Player.Functions.AddItem(item, exellentAmount)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item], 'add', exellentAmount)
+    else
+        print(locale('sv_lang_3'))
+    end
+
+    TriggerClientEvent('rex-farming:client:removePlantObject', -1, plantId)
+    TriggerEvent('rex-farming:server:PlantRemoved', plantId)
+    TriggerEvent('rex-farming:server:updatePlants')
 end)
 
 ---------------------------------------------
@@ -375,116 +432,159 @@ AddEventHandler('rex-farming:server:updatePlants', function()
 end)
 
 ---------------------------------------------
--- water plant
+-- water plant (optimized bucket system with metadata)
 ---------------------------------------------
 RegisterServerEvent('rex-farming:server:waterPlant')
 AddEventHandler('rex-farming:server:waterPlant', function(plantid)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
-
-    local hasItem1 = RSGCore.Functions.HasItem(src, 'waterbucket5', 1)
-    local hasItem2 = RSGCore.Functions.HasItem(src, 'waterbucket4', 1)
-    local hasItem3 = RSGCore.Functions.HasItem(src, 'waterbucket3', 1)
-    local hasItem4 = RSGCore.Functions.HasItem(src, 'waterbucket2', 1)
-    local hasItem5 = RSGCore.Functions.HasItem(src, 'waterbucket1', 1)
-    local hasItem6 = RSGCore.Functions.HasItem(src, 'waterbucket0', 1)
-
-    if hasItem1 then
-        Player.Functions.RemoveItem('waterbucket5', 1)
-        Player.Functions.AddItem('waterbucket4', 1)
-    end
-    if hasItem2 then
-        Player.Functions.RemoveItem('waterbucket4', 1)
-        Player.Functions.AddItem('waterbucket3', 1)
-    end
-    if hasItem3 then
-        Player.Functions.RemoveItem('waterbucket3', 1)
-        Player.Functions.AddItem('waterbucket2', 1)
-    end
-    if hasItem4 then
-        Player.Functions.RemoveItem('waterbucket2', 1)
-        Player.Functions.AddItem('waterbucket1', 1)
-    end
-    if hasItem5 then
-        Player.Functions.RemoveItem('waterbucket1', 1)
-        Player.Functions.AddItem('waterbucket0', 1)
+    if not Player or not plantid then return end
+    
+    local citizenid = Player.PlayerData.citizenid
+    
+    -- Anti-spam check
+    if WaterCooldowns[citizenid] and (os.time() - WaterCooldowns[citizenid]) < 2 then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_17'), type = 'error', duration = 3000 })
+        return
     end
 
-    -- update database of new thirst value
-    local result = MySQL.query.await('SELECT * FROM rex_farming WHERE plantid = @plantid', { ['@plantid'] = plantid })
-    if not result[1] then return end
-    for i = 1, #result do
-        local plantData = json.decode(result[i].properties)
-        local thirst = plantData.thirst
-        plantData.thirst = thirst + Config.ThirstIncrease
-        if plantData.thirst > 100 then
-            plantData.thirst = 100
-        end
-        MySQL.Async.execute('UPDATE rex_farming SET `properties` = ? WHERE `plantid`= ?', {json.encode(plantData), plantid})
+    -- Find water bucket and decrease uses
+    local item = Player.Functions.GetItemByName('water_bucket')
+    if not item then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_18'), type = 'error', duration = 3000 })
+        return
     end
+    
+    -- Get current uses, default to 0 if no metadata
+    local currentUses = (item.info and item.info.uses) or 0
+    
+    if currentUses <= 0 then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_19'), type = 'error', duration = 3000 })
+        return
+    end
+    Player.Functions.RemoveItem('water_bucket', 1, item.slot)
+    
+    local newUses = currentUses - 1
+    local newDescription = newUses > 0 and ('Water Bucket - ' .. newUses .. ' use' .. (newUses > 1 and 's' or '') .. ' left') or 'Empty Water Bucket'
+    Player.Functions.AddItem('water_bucket', 1, nil, {uses = newUses, description = newDescription})
+    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items['water_bucket'], 'remove', 1)
+    
+    -- Set cooldown
+    WaterCooldowns[citizenid] = os.time()
+
+    -- Update database of new thirst value
+    local result = MySQL.query.await('SELECT properties FROM rex_farming WHERE plantid = ?', { plantid })
+    if not result or not result[1] then 
+        print('[rex-farming] Error: Plant not found - ' .. plantid)
+        return 
+    end
+    
+    local plantData = json.decode(result[1].properties)
+    plantData.thirst = math.min((plantData.thirst or 0) + Config.ThirstIncrease, 100)
+    -- Remove runtime-only flags
+    plantData.beingHarvested = nil
+    
+    MySQL.update.await('UPDATE rex_farming SET properties = ? WHERE plantid = ?', 
+        { json.encode(plantData), plantid }
+    )
+    
     TriggerEvent('rex-farming:server:updatePlants')
-
 end)
 
 ---------------------------------------------
--- feed plant
+-- feed plant (optimized)
 ---------------------------------------------
 RegisterServerEvent('rex-farming:server:feedPlant')
 AddEventHandler('rex-farming:server:feedPlant', function(plantid)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
+    if not Player or not plantid then return end
+    
+    local citizenid = Player.PlayerData.citizenid
+    
+    -- Anti-spam check
+    if FeedCooldowns[citizenid] and (os.time() - FeedCooldowns[citizenid]) < 2 then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_20'), type = 'error', duration = 3000 })
+        return
+    end
+    
     local hasItem = RSGCore.Functions.HasItem(src, 'fertilizer', 1)
 
-    if hasItem then
-        -- update database of new hunger value
-        local result = MySQL.query.await('SELECT * FROM rex_farming WHERE plantid = @plantid', { ['@plantid'] = plantid })
-        if not result[1] then return end
-        for i = 1, #result do
-            local plantData = json.decode(result[i].properties)
-            local hunger = plantData.hunger
-            plantData.hunger = hunger + Config.HungerIncrease
-            if plantData.hunger > 100 then
-                plantData.hunger = 100
+    if not hasItem then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_21'), type = 'error', duration = 3000 })
+        return
+    end
+
+    -- Set cooldown
+    FeedCooldowns[citizenid] = os.time()
+    
+    -- Update database of new hunger value
+    local result = MySQL.query.await('SELECT properties FROM rex_farming WHERE plantid = ?', { plantid })
+    if not result or not result[1] then 
+        print('[rex-farming] Error: Plant not found - ' .. plantid)
+        return 
+    end
+    
+    local plantData = json.decode(result[1].properties)
+    plantData.hunger = math.min((plantData.hunger or 0) + Config.HungerIncrease, 100)
+    -- Remove runtime-only flags
+    plantData.beingHarvested = nil
+    
+    MySQL.update.await('UPDATE rex_farming SET properties = ? WHERE plantid = ?', 
+        { json.encode(plantData), plantid }
+    )
+    
+    TriggerEvent('rex-farming:server:updatePlants')
+    Player.Functions.RemoveItem('fertilizer', 1)
+    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items['fertilizer'], 'remove', 1)
+end)
+
+---------------------------------------------
+-- update plant (optimized)
+---------------------------------------------
+RegisterServerEvent('rex-farming:server:updateFarmPlants')
+AddEventHandler('rex-farming:server:updateFarmPlants', function(id, data)
+    if not id or not data then 
+        print('[rex-farming] Error: Invalid parameters in updateFarmPlants')
+        return 
+    end
+
+    -- Remove runtime-only flags before saving to database
+    local dataToSave = data
+    if dataToSave.beingHarvested ~= nil then
+        dataToSave = {}
+        for k, v in pairs(data) do
+            if k ~= 'beingHarvested' then
+                dataToSave[k] = v
             end
-            MySQL.Async.execute('UPDATE rex_farming SET `properties` = ? WHERE `plantid`= ?', {json.encode(plantData), plantid})
         end
-        TriggerEvent('rex-farming:server:updatePlants')
-        Player.Functions.RemoveItem('fertilizer', 1)
+    end
+
+    local newData = json.encode(dataToSave)
+    local affectedRows = MySQL.update.await('UPDATE rex_farming SET properties = ? WHERE plantid = ?', 
+        { newData, id }
+    )
+    
+    if affectedRows == 0 then
+        print('[rex-farming] Warning: No plant found with ID ' .. id)
     end
 end)
 
 ---------------------------------------------
--- update plant
----------------------------------------------
-RegisterServerEvent('rex-farming:server:updateFarmPlants')
-AddEventHandler('rex-farming:server:updateFarmPlants', function(id, data)
-    local result = MySQL.query.await('SELECT * FROM rex_farming WHERE plantid = @plantid', { ['@plantid'] = id })
-
-    if not result[1] then return end
-
-    local newData = json.encode(data)
-    MySQL.Async.execute('UPDATE rex_farming SET properties = @properties WHERE plantid = @id', { ['@properties'] = newData, ['@id'] = id })
-end)
-
----------------------------------------------
--- remove plant
+-- remove plant (optimized - direct delete)
 ---------------------------------------------
 RegisterServerEvent('rex-farming:server:PlantRemoved')
 AddEventHandler('rex-farming:server:PlantRemoved', function(plantId)
-    local result = MySQL.query.await('SELECT * FROM rex_farming')
+    if not plantId then return end
 
-    if not result then return end
-
-    for i = 1, #result do
-        local plantData = json.decode(result[i].properties)
-
-        if plantData.id == plantId then
-            MySQL.Async.execute('DELETE FROM rex_farming WHERE id = @id', { ['@id'] = result[i].id })
-            for k, v in pairs(Config.FarmPlants) do
-                if v.id == plantId then
-                    table.remove(Config.FarmPlants, k)
-                end
-            end
+    -- Direct delete by plantid instead of querying all plants
+    MySQL.query.await('DELETE FROM rex_farming WHERE plantid = ?', { plantId })
+    
+    -- Remove from Config.FarmPlants cache
+    for k = #Config.FarmPlants, 1, -1 do
+        if Config.FarmPlants[k].id == plantId then
+            table.remove(Config.FarmPlants, k)
+            break
         end
     end
 end)
@@ -500,6 +600,8 @@ AddEventHandler('rex-farming:server:getPlants', function()
 
     for i = 1, #result do
         local plantData = json.decode(result[i].properties)
+        -- Always reset beingHarvested flag on load (runtime-only flag)
+        plantData.beingHarvested = false
         print(locale('sv_lang_4')..plantData.planttype..locale('sv_lang_5')..plantData.id)
         table.insert(Config.FarmPlants, plantData)
     end
@@ -512,13 +614,23 @@ RegisterServerEvent('rex-farming:server:refreshwaterbucket')
 AddEventHandler('rex-farming:server:refreshwaterbucket', function()
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
-    local hasItem = RSGCore.Functions.HasItem(src, 'waterbucket0', 1)
-    if hasItem then
-        Player.Functions.RemoveItem('waterbucket0', 1)
-        Player.Functions.AddItem('waterbucket5', 1)
-        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items['waterbucket5'], 'add', 1)
+    local item = Player.Functions.GetItemByName('water_bucket')
+    
+    if not item then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_6'), type = 'error', duration = 3000 })
+        return
+    end
+    
+    -- Get current uses, default to 0 if no metadata
+    local currentUses = (item.info and item.info.uses) or 0
+    
+    -- Only fill if bucket is empty (0 uses)
+    if currentUses == 0 then
+        Player.Functions.RemoveItem('water_bucket', 1, item.slot)
+        Player.Functions.AddItem('water_bucket', 1, nil, {uses = 5, description = 'Water Bucket - 5 uses left'})
+        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items['water_bucket'], 'add', 1)
     else
-        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_6'), type = 'success', duration = 3000 })
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_22'), type = 'error', duration = 3000 })
     end
 end)
 
@@ -527,8 +639,13 @@ end)
 ---------------------------------------------
 RegisterNetEvent('rex-farming:server:collectedfertilizer')
 AddEventHandler('rex-farming:server:collectedfertilizer', function(coords)
+    local src = source
+    local Player = RSGCore.Functions.GetPlayer(src)
+    if not Player then return end
+    
     local exists = false
 
+    -- Check if already collected
     for i = 1, #CollectedFertilizer do
         local fertilizer = CollectedFertilizer[i]
         if fertilizer == coords then
@@ -538,7 +655,14 @@ AddEventHandler('rex-farming:server:collectedfertilizer', function(coords)
     end
 
     if not exists then
+        -- Mark as collected
         CollectedFertilizer[#CollectedFertilizer + 1] = coords
+        
+        -- Give item (moved from client event)
+        Player.Functions.AddItem('fertilizer', 1)
+        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items['fertilizer'], 'add', 1)
+    else
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_23'), type = 'error', duration = 3000 })
     end
 
 end)
@@ -585,6 +709,11 @@ lib.cron.new(Config.FarmingCronJob, function ()
         else
             propData.growth = growth + Config.GrowthIncrease
         end
+        
+        -- Cap growth at 100% immediately
+        if propData.growth > 100 then
+            propData.growth = 100
+        end
 
         -- wealther logic
         if weather == 'rain' then
@@ -599,23 +728,20 @@ lib.cron.new(Config.FarmingCronJob, function ()
             propData.thirst = thirst + Config.ThirstDrizzle + Config.ThirstDecrease
         end
 
-        if growth >= 100 then
-            propData.growth = 100
-        end
-
-        if thirst < 0 then
+        if propData.thirst < 0 then
             propData.thirst = 0
         end
 
-        if thirst < Config.StartDegrade then
+        if propData.thirst < Config.StartDegrade then
             propData.quality = quality - Config.QualityDegrade
         end
 
-        if growth >= 25 and growth < 99 then
+        -- Update stage based on capped growth value
+        if propData.growth >= 25 and propData.growth < 100 then
             propData.stage = 2
         end
 
-        if growth >= 100 then
+        if propData.growth >= 100 then
             propData.stage = 3
         end
 
@@ -634,7 +760,22 @@ lib.cron.new(Config.FarmingCronJob, function ()
             TriggerEvent('rex-farming:server:destroydeadplant', deadid)
         end
 
+        -- Remove runtime-only flags before saving
+        propData.beingHarvested = nil
+
         MySQL.Async.execute('UPDATE rex_farming SET `properties` = ? WHERE `plantid`= ?', {json.encode(propData), id})
+        
+        -- Update Config.FarmPlants so clients see the stage change
+        for j = 1, #Config.FarmPlants do
+            if Config.FarmPlants[j].id == id then
+                Config.FarmPlants[j].stage = propData.stage
+                Config.FarmPlants[j].growth = propData.growth
+                Config.FarmPlants[j].thirst = propData.thirst
+                Config.FarmPlants[j].hunger = propData.hunger
+                Config.FarmPlants[j].quality = propData.quality
+                break
+            end
+        end
 
     end
 

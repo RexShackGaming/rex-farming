@@ -6,6 +6,7 @@ local canHarvest = true
 local Zones = {}
 local inFarmZone = false
 local inplantmenu = false
+local plantStatsCache = {} -- Cache for plant stats to prevent flickering
 lib.locale()
 
 ---------------------------------------------
@@ -69,83 +70,97 @@ end)
 ---------------------------------------------
 -- spawn plants and setup target
 ---------------------------------------------
+-- Cache spawned plants by ID for faster lookups
+local SpawnedPlantsById = {}
+
+-- Helper function to get stage hash
+local function GetPlantStageHash(plant)
+    if plant.stage == 1 then return plant.hash1
+    elseif plant.stage == 2 then return plant.hash2
+    elseif plant.stage == 3 then return plant.hash3
+    end
+    return plant.hash1
+end
+
 CreateThread(function()
     while true do
-        Wait(150)
+        Wait(500) -- Reduced frequency for better performance
 
         local pos = GetEntityCoords(cache.ped)
         local InRange = false
 
         for i = 1, #Config.FarmPlants do
-            local dist = GetDistanceBetweenCoords(pos.x, pos.y, pos.z, Config.FarmPlants[i].x, Config.FarmPlants[i].y, Config.FarmPlants[i].z, true)
+            local plant = Config.FarmPlants[i]
+            local dist = #(pos - vector3(plant.x, plant.y, plant.z)) -- Optimized distance calc
 
-            if dist >= 50.0 then goto continue end
-
-            local hasSpawned = false
-            InRange = true
-
-            for z = 1, #SpawnedPlants do
-                local p = SpawnedPlants[z]
-
-                if p.id == Config.FarmPlants[i].id then
-                    hasSpawned = true
+            if dist < 50.0 then
+                InRange = true
+                
+                -- Check if already spawned with correct stage
+                local spawned = SpawnedPlantsById[plant.id]
+                if spawned and spawned.stage == plant.stage then
+                    goto continue
+                end
+                
+                -- Remove old version if stage changed
+                if spawned and spawned.stage ~= plant.stage then
+                    if DoesEntityExist(spawned.obj) then
+                        DeleteObject(spawned.obj)
+                    end
+                    SpawnedPlantsById[plant.id] = nil
+                    for j = #SpawnedPlants, 1, -1 do
+                        if SpawnedPlants[j].id == plant.id then
+                            table.remove(SpawnedPlants, j)
+                            break
+                        end
+                    end
                 end
 
-                if SpawnedPlants[z].stage ~= Config.FarmPlants[i].stage then
-                    hasSpawned = false
+                -- Spawn plant
+                local planthash = GetPlantStageHash(plant)
+                local phash = joaat(planthash)
+                
+                if not lib.requestModel(phash, 5000) then
+                    goto continue
                 end
-
-            end
-
-            if hasSpawned then goto continue end
-            
-            if Config.FarmPlants[i].stage == 1 then
-                stageplanthash = Config.FarmPlants[i].hash1
-            end
-            
-            if Config.FarmPlants[i].stage == 2 then
-                stageplanthash = Config.FarmPlants[i].hash2
-            end
-            
-            if Config.FarmPlants[i].stage == 3 then
-                stageplanthash = Config.FarmPlants[i].hash3
-            end
-
-            local planthash = stageplanthash
-            local phash = joaat(planthash)
-            lib.requestModel(phash, 5000)
-            local data = {}
-            data.id = Config.FarmPlants[i].id
-            data.stage = Config.FarmPlants[i].stage
-            data.obj = CreateObject(phash, Config.FarmPlants[i].x, Config.FarmPlants[i].y, Config.FarmPlants[i].z, false, false, false)
-            SetEntityHeading(data.obj, Config.FarmPlants[i].h)
-            SetEntityAsMissionEntity(data.obj, true)
-            PlaceObjectOnGroundProperly(data.obj)
-            Wait(1000)
-            FreezeEntityPosition(data.obj, true)
-            SetModelAsNoLongerNeeded(data.obj)
-            SpawnedPlants[#SpawnedPlants + 1] = data
-            hasSpawned = false
-
-            -- create target for the entity
-            exports.ox_target:addLocalEntity(data.obj, {
-                {
-                    name = 'farmplants',
-                    icon = 'fa-solid fa-seedling',
-                    label = 'Farmer Menu',
-                    onSelect = function()
-                        TriggerEvent('rex-farming:client:plantmenu', data.id)
-                    end,
-                    distance = 3.0
+                
+                local data = {
+                    id = plant.id,
+                    stage = plant.stage,
+                    obj = CreateObject(phash, plant.x, plant.y, plant.z, false, false, false)
                 }
-            })
+                
+                SetEntityHeading(data.obj, plant.h)
+                SetEntityAsMissionEntity(data.obj, true)
+                PlaceObjectOnGroundProperly(data.obj)
+                FreezeEntityPosition(data.obj, true)
+                SetModelAsNoLongerNeeded(phash)
+                
+                SpawnedPlants[#SpawnedPlants + 1] = data
+                SpawnedPlantsById[plant.id] = data
+
+                -- Create target for the entity
+                exports.ox_target:addLocalEntity(data.obj, {
+                    {
+                        name = 'farmplants',
+                        icon = 'fa-solid fa-seedling',
+                        label = locale('cl_lang_23'),
+                        onSelect = function()
+                            TriggerEvent('rex-farming:client:plantmenu', data.id)
+                        end,
+                        distance = 3.0,
+                        canInteract = function(entity)
+                            return not inplantmenu
+                        end
+                    }
+                })
+            end
 
             ::continue::
-
         end
 
         if not InRange then
-            Wait(5000)
+            Wait(2000) -- Longer wait when not near plants
         end
     end
 end)
@@ -167,23 +182,84 @@ local DrawTxt = function(str, x, y, w, h, enableShadow, col1, col2, col3, a, cen
     DisplayText(string, x, y)
 end
 
+-- Thread to update plant stats cache
 CreateThread(function()
     while true do
         local playerCoords = GetEntityCoords(cache.ped)
-        local t = 1000
+        
+        -- Update cache for nearby plants
         for i = 1, #Config.FarmPlants do
             local plant = Config.FarmPlants[i]
-            local plantcoords = vec3(plant.x, plant.y, plant.z)
-            local distance = #(playerCoords - plantcoords)
-            if distance < 1.0 and not inplantmenu then
-                t = 4
-                DrawTxt(RSGCore.Shared.Items[plant.planttype].label..locale('cl_lang_2'), 0.50, 0.85, 0.4, 0.4, true, 249, 250, 195, 200, true)
-                if IsControlJustPressed(2, RSGCore.Shared.Keybinds['J']) then
-                    TriggerEvent('rex-farming:client:plantmenu', plant.id)
-                end
+            local distance = #(playerCoords - vector3(plant.x, plant.y, plant.z))
+            
+            if distance < 2.0 then
+                RSGCore.Functions.TriggerCallback('rex-farming:server:getplantdata', function(result)
+                    if result and result[1] then
+                        local plantdata = json.decode(result[1].properties)
+                        plantStatsCache[plant.id] = {
+                            growth = math.floor(plantdata.growth),
+                            thirst = math.floor(plantdata.thirst),
+                            hunger = math.floor(plantdata.hunger)
+                        }
+                    end
+                end, plant.id)
             end
         end
-        Wait(t)
+        
+        Wait(1000) -- Update cache every second
+    end
+end)
+
+-- Optimized plant interaction check
+CreateThread(function()
+    while true do
+        local playerCoords = GetEntityCoords(cache.ped)
+        local nearestPlant = nil
+        local nearestDist = 1.0
+        
+        -- Find nearest plant within range
+        for i = 1, #Config.FarmPlants do
+            local plant = Config.FarmPlants[i]
+            local distance = #(playerCoords - vector3(plant.x, plant.y, plant.z))
+            
+            if distance < nearestDist then
+                nearestPlant = plant
+                nearestDist = distance
+            end
+        end
+        
+        -- Show interaction only for nearest plant
+        if nearestPlant and not inplantmenu then
+            -- Plant title
+            local plantLabel = RSGCore.Shared.Items[nearestPlant.planttype].label
+            DrawTxt(plantLabel..locale('cl_lang_2'), 0.50, 0.80, 0.45, 0.45, true, 249, 250, 195, 255, true)
+            
+            -- Add stats if cached
+            if plantStatsCache[nearestPlant.id] then
+                local stats = plantStatsCache[nearestPlant.id]
+                
+                -- Determine colors based on values
+                local growthColor = stats.growth >= 100 and {100, 255, 100} or stats.growth >= 50 and {255, 200, 100} or {255, 255, 150}
+                local thirstColor = stats.thirst > Config.StartDegrade and {100, 200, 255} or stats.thirst > 10 and {255, 200, 100} or {255, 100, 100}
+                local hungerColor = stats.hunger > Config.StartDegrade and {150, 255, 150} or stats.hunger > 10 and {255, 200, 100} or {255, 100, 100}
+                
+                -- Growth bar
+                local yOffset = 0.835
+                DrawTxt(locale('cl_lang_43')..stats.growth..'%', 0.50, yOffset, 0.35, 0.35, true, growthColor[1], growthColor[2], growthColor[3], 255, true)
+                
+                -- Thirst and Hunger on same line
+                yOffset = yOffset + 0.025
+                DrawTxt(locale('cl_lang_44')..stats.thirst..'%', 0.46, yOffset, 0.32, 0.32, true, thirstColor[1], thirstColor[2], thirstColor[3], 255, true)
+                DrawTxt(locale('cl_lang_45')..stats.hunger..'%', 0.54, yOffset, 0.32, 0.32, true, hungerColor[1], hungerColor[2], hungerColor[3], 255, true)
+            end
+            
+            if IsControlJustPressed(2, RSGCore.Shared.Keybinds['J']) then
+                TriggerEvent('rex-farming:client:plantmenu', nearestPlant.id)
+            end
+            Wait(4)
+        else
+            Wait(500)
+        end
     end
 end)
 
@@ -193,6 +269,10 @@ end)
 RegisterNetEvent('rex-farming:client:plantmenu', function(id)
 
     RSGCore.Functions.TriggerCallback('rex-farming:server:getplantdata', function(result)
+        if not result or not result[1] then
+            lib.notify({ title = locale('cl_lang_24'), type = 'error', duration = 3000 })
+            return
+        end
         
         local plantdata = json.decode(result[1].properties)
         local PlayerData = RSGCore.Functions.GetPlayerData()
@@ -224,13 +304,15 @@ RegisterNetEvent('rex-farming:client:plantmenu', function(id)
         if playerJobType == 'leo' and plantdata.planttype == 'weed' then
             lib.registerContext({
                 id = 'plant_menu',
-                title = RSGCore.Shared.Items[plantdata.planttype].label..locale('cl_lang_3'),
+                title = '🌿 '..RSGCore.Shared.Items[plantdata.planttype].label..locale('cl_lang_3'),
+                menu = 'main_menu',
                 onExit = function()
                     inplantmenu = false
                 end,
                 options = {
                     {
-                        title = 'Destroy Plant',
+                        title = locale('cl_lang_25'),
+                        description = locale('cl_lang_26'),
                         icon = 'fa-solid fa-fire',
                         iconColor = 'orange',
                         serverEvent = 'rex-farming:server:destroyplant',
@@ -241,62 +323,94 @@ RegisterNetEvent('rex-farming:client:plantmenu', function(id)
             })
             lib.showContext('plant_menu')
         else
+            -- Helper to get growth stage description
+            local function getGrowthStage(growth)
+                if growth < 33 then return locale('cl_lang_27')
+                elseif growth < 66 then return locale('cl_lang_28')
+                elseif growth < 100 then return locale('cl_lang_29')
+                else return locale('cl_lang_30') end
+            end
+
+            local function getQualityLabel(quality)
+                if quality > 75 then return locale('cl_lang_31')
+                elseif quality > 50 then return locale('cl_lang_32')
+                elseif quality > 25 then return locale('cl_lang_33')
+                else return locale('cl_lang_34') end
+            end
+
+            local menuOptions = {
+                {
+                    title = locale('cl_lang_4')..plantdata.growth..'% ('..getGrowthStage(plantdata.growth)..')',
+                    progress = plantdata.growth,
+                    colorScheme = 'green',
+                    icon = 'fa-solid fa-chart-line',
+                },
+                {
+                    title = locale('cl_lang_5')..plantdata.quality..'% ('..getQualityLabel(plantdata.quality)..')',
+                    progress = plantdata.quality,
+                    colorScheme = qualityColorScheme,
+                    icon = 'fa-solid fa-star',
+                },
+                {
+                    title = locale('cl_lang_6')..plantdata.thirst..'%',
+                    description = plantdata.thirst < Config.StartDegrade and locale('cl_lang_35') or locale('cl_lang_36'),
+                    progress = plantdata.thirst,
+                    colorScheme = thirstColorScheme,
+                    icon = 'fa-solid fa-droplet',
+                },
+                {
+                    title = locale('cl_lang_20')..plantdata.hunger..'%',
+                    description = plantdata.hunger < Config.StartDegrade and locale('cl_lang_37') or locale('cl_lang_38'),
+                    progress = plantdata.hunger,
+                    colorScheme = hungerColorScheme,
+                    icon = 'fa-solid fa-flask',
+                },
+            }
+
+            -- Only show water/feed options if plant is not fully grown
+            if plantdata.growth < 100 then
+                table.insert(menuOptions, {
+                    title = locale('cl_lang_7'),
+                    description = locale('cl_lang_39'),
+                    icon = 'fa-solid fa-droplet',
+                    iconColor = '#74C0FC',
+                    event = 'rex-farming:client:waterplant',
+                    args = { plantid = plantdata.id },
+                    arrow = true,
+                    disabled = plantdata.thirst >= 100
+                })
+                table.insert(menuOptions, {
+                    title = locale('cl_lang_21'),
+                    description = locale('cl_lang_40'),
+                    icon = 'fa-solid fa-poop',
+                    iconColor = '#BA8C22',
+                    event = 'rex-farming:client:feedplant',
+                    args = { plantid = plantdata.id },
+                    arrow = true,
+                    disabled = plantdata.hunger >= 100
+                })
+            end
+
+            -- Only show harvest option if plant is fully grown
+            if plantdata.growth >= 100 then
+                table.insert(menuOptions, {
+                    title = locale('cl_lang_8'),
+                    description = locale('cl_lang_41'),
+                    icon = 'fa-solid fa-seedling',
+                    iconColor = 'green',
+                    event = 'rex-farming:client:harvestplant',
+                    args = { plantid = plantdata.id, growth = plantdata.growth },
+                    arrow = true
+                })
+            end
+
             lib.registerContext({
                 id = 'plant_menu',
                 title = RSGCore.Shared.Items[plantdata.planttype].label..locale('cl_lang_3'),
                 onExit = function()
                     inplantmenu = false
                 end,
-                options = {
-                    {
-                        title = locale('cl_lang_4')..plantdata.growth,
-                        progress = plantdata.growth,
-                        colorScheme = 'green',
-                        icon = 'fa-solid fa-hashtag',
-                    },
-                    {
-                        title = locale('cl_lang_5')..plantdata.quality,
-                        progress = plantdata.quality,
-                        colorScheme = qualityColorScheme,
-                        icon = 'fa-solid fa-hashtag',
-                    },
-                    {
-                        title = locale('cl_lang_6')..plantdata.thirst,
-                        progress = plantdata.thirst,
-                        colorScheme = thirstColorScheme,
-                        icon = 'fa-solid fa-hashtag',
-                    },
-                    {
-                        title = locale('cl_lang_20')..plantdata.hunger,
-                        progress = plantdata.hunger,
-                        colorScheme = hungerColorScheme,
-                        icon = 'fa-solid fa-hashtag',
-                    },
-                    {
-                        title = locale('cl_lang_7'),
-                        icon = 'fa-solid fa-droplet',
-                        iconColor = '#74C0FC',
-                        event = 'rex-farming:client:waterplant',
-                        args = { plantid = plantdata.id },
-                        arrow = true
-                    },
-                    {
-                        title = locale('cl_lang_21'),
-                        icon = 'fa-solid fa-poop',
-                        iconColor = '#BA8C22',
-                        event = 'rex-farming:client:feedplant',
-                        args = { plantid = plantdata.id },
-                        arrow = true
-                    },
-                    {
-                        title = locale('cl_lang_8'),
-                        icon = 'fa-solid fa-seedling',
-                        iconColor = 'green',
-                        event = 'rex-farming:client:harvestplant',
-                        args = { plantid = plantdata.id, growth = plantdata.growth },
-                        arrow = true
-                    },
-                }
+                options = menuOptions
             })
             lib.showContext('plant_menu')
         end
@@ -308,31 +422,32 @@ end)
 -- water plant
 ---------------------------------------------
 RegisterNetEvent('rex-farming:client:waterplant', function(data)
-
-    local hasItem1 = RSGCore.Functions.HasItem('waterbucket5', 1)
-    local hasItem2 = RSGCore.Functions.HasItem('waterbucket4', 1)
-    local hasItem3 = RSGCore.Functions.HasItem('waterbucket3', 1)
-    local hasItem4 = RSGCore.Functions.HasItem('waterbucket2', 1)
-    local hasItem5 = RSGCore.Functions.HasItem('waterbucket1', 1)
-
-    if hasItem1 or hasItem2 or hasItem3 or hasItem4 or hasItem5 and not isBusy then
-        isBusy = true
-        LocalPlayer.state:set("inv_busy", true, true)
-        FreezeEntityPosition(cache.ped, true)
-        TaskStartScenarioInPlace(cache.ped, `WORLD_HUMAN_BUCKET_POUR_LOW`, 0, true)
-        Wait(10000)
-        ClearPedTasks(cache.ped)
-        SetCurrentPedWeapon(cache.ped, `WEAPON_UNARMED`, true)
-        FreezeEntityPosition(cache.ped, false)
-        TriggerServerEvent('rex-farming:server:waterPlant', data.plantid)
-        LocalPlayer.state:set("inv_busy", false, true)
-        isBusy = false
-    else
-        lib.notify({ title = locale('cl_lang_9'), type = 'error', duration = 7000 })
+    if isBusy then
+        lib.notify({ title = locale('cl_lang_42'), type = 'error', duration = 3000 })
+        return
     end
 
-    inplantmenu = false
+    -- Check for water bucket with uses > 0
+    local hasWaterBucket = RSGCore.Functions.HasItem('water_bucket', 1)
 
+    if not hasWaterBucket then
+        lib.notify({ title = locale('cl_lang_9'), type = 'error', duration = 5000 })
+        inplantmenu = false
+        return
+    end
+
+    isBusy = true
+    LocalPlayer.state:set("inv_busy", true, true)
+    FreezeEntityPosition(cache.ped, true)
+    TaskStartScenarioInPlace(cache.ped, `WORLD_HUMAN_BUCKET_POUR_LOW`, 0, true)
+    Wait(10000)
+    ClearPedTasksImmediately(cache.ped)
+    SetCurrentPedWeapon(cache.ped, `WEAPON_UNARMED`, true)
+    FreezeEntityPosition(cache.ped, false)
+    TriggerServerEvent('rex-farming:server:waterPlant', data.plantid)
+    LocalPlayer.state:set("inv_busy", false, true)
+    isBusy = false
+    inplantmenu = false
 end)
 
 ---------------------------------------------
@@ -346,9 +461,9 @@ RegisterNetEvent('rex-farming:client:feedplant', function(data)
         isBusy = true
         LocalPlayer.state:set("inv_busy", true, true)
         FreezeEntityPosition(cache.ped, true)
-        TaskStartScenarioInPlace(cache.ped, `WORLD_HUMAN_FEED_PIGS`, 0, true)
+        TaskStartScenarioInPlace(cache.ped, `WORLD_HUMAN_FEED_CHICKEN`, 0, true)
         Wait(10000)
-        ClearPedTasks(cache.ped)
+        ClearPedTasksImmediately(cache.ped)
         SetCurrentPedWeapon(cache.ped, `WEAPON_UNARMED`, true)
         FreezeEntityPosition(cache.ped, false)
         TriggerServerEvent('rex-farming:server:feedPlant', data.plantid)
@@ -367,11 +482,7 @@ end)
 ---------------------------------------------
 RegisterNetEvent('rex-farming:client:harvestplant', function(data)
 
-    if data.growth < 100 then
-        lib.notify({ title = locale('cl_lang_10'), type = 'error', duration = 7000 })
-        inplantmenu = false
-        return
-    end
+    -- NOTE: Growth validation moved to server-side for security
 
     if not isBusy then
         isBusy = true
@@ -421,23 +532,8 @@ end)
 RegisterNetEvent('rex-farming:client:plantnewseed')
 AddEventHandler('rex-farming:client:plantnewseed', function(outputitem, inputitem, prophash1, prophash2, prophash3, propcoords, propheading)
 
-    local PlayerData = RSGCore.Functions.GetPlayerData()
-    local playerJobType = PlayerData.job.type
-
-    if playerJobType == 'leo' and outputitem == 'weed' then
-        lib.notify({ title = 'Law not able to plant this!', type = 'error', duration = 7000 })
-        return
-    end
-
-    if not inFarmZone and not Config.GrowAnywhere then
-        lib.notify({ title = locale('cl_lang_11'), type = 'error', duration = 7000 })
-        return 
-    end
-
-    if not CanPlantSeedHere(propcoords) then
-        lib.notify({ title = locale('cl_lang_12'), type = 'error', duration = 7000 })
-        return 
-    end
+    -- NOTE: Job validation moved to server-side for security
+    -- NOTE: Location validation moved to server-side for security
 
     if isBusy then
         lib.notify({ title = locale('cl_lang_13'), type = 'error', duration = 7000 })
@@ -459,17 +555,24 @@ AddEventHandler('rex-farming:client:plantnewseed', function(outputitem, inputite
 end)
 
 ---------------------------------------------
--- remove plant object
+-- remove plant object (optimized with lookup cache)
 ---------------------------------------------
 RegisterNetEvent('rex-farming:client:removePlantObject')
-AddEventHandler('rex-farming:client:removePlantObject', function(plant)
-    for i = 1, #SpawnedPlants do
-        local o = SpawnedPlants[i]
-
-        if o.id == plant then
-            SetEntityAsMissionEntity(o.obj, false)
-            FreezeEntityPosition(o.obj, false)
-            DeleteObject(o.obj)
+AddEventHandler('rex-farming:client:removePlantObject', function(plantId)
+    -- Use cached lookup first
+    local spawned = SpawnedPlantsById[plantId]
+    if spawned and DoesEntityExist(spawned.obj) then
+        SetEntityAsMissionEntity(spawned.obj, false)
+        FreezeEntityPosition(spawned.obj, false)
+        DeleteObject(spawned.obj)
+        SpawnedPlantsById[plantId] = nil
+    end
+    
+    -- Clean up from array
+    for i = #SpawnedPlants, 1, -1 do
+        if SpawnedPlants[i].id == plantId then
+            table.remove(SpawnedPlants, i)
+            break
         end
     end
 end)

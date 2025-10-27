@@ -19,34 +19,44 @@ CreateThread(function()
 end)
 
 ---------------------------------------------
--- collect water
+-- collect water (optimized)
 ---------------------------------------------
+local collectingWater = false
+
 RegisterNetEvent('rex-farming:client:collectwater', function()
-
-    local hasItem = RSGCore.Functions.HasItem('waterbucket0', 1)
-
-    if not hasItem then
-        lib.notify({ title = locale('cl_lang_15'), type = 'error', duration = 7000 })
+    if collectingWater then
+        lib.notify({ title = locale('cl_lang_48'), type = 'error', duration = 3000 })
         return
     end
 
-    if hasItem then
-        -- progress bar
-        LocalPlayer.state:set("inv_busy", true, true)
-        lib.progressBar({
-            duration = 10000,
-            position = 'bottom',
-            useWhileDead = false,
-            canCancel = false,
-            disableControl = true,
-            disable = {
-                move = true,
-                mouse = true,
-            },
-            label = locale('cl_lang_16'),
-        })
-        LocalPlayer.state:set("inv_busy", false, true)
-        TriggerServerEvent('rex-farming:server:refreshwaterbucket')
+    -- Check for water bucket with 0 uses (empty bucket)
+    local hasItem = RSGCore.Functions.HasItem('water_bucket', 1)
+
+    if not hasItem then
+        lib.notify({ title = locale('cl_lang_15'), type = 'error', duration = 5000 })
+        return
     end
 
+    collectingWater = true
+    LocalPlayer.state:set("inv_busy", true, true)
+    
+    local success = lib.progressBar({
+        duration = Config.CollectWaterTime or 10000,
+        position = 'bottom',
+        useWhileDead = false,
+        canCancel = true,
+        disableControl = true,
+        disable = {
+            move = true,
+            mouse = true,
+        },
+        label = locale('cl_lang_16'),
+    })
+    
+    LocalPlayer.state:set("inv_busy", false, true)
+    collectingWater = false
+    
+    if success then
+        TriggerServerEvent('rex-farming:server:refreshwaterbucket')
+    end
 end)
