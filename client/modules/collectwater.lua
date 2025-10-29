@@ -29,16 +29,29 @@ RegisterNetEvent('rex-farming:client:collectwater', function()
         return
     end
 
-    -- Check for water bucket with 0 uses (empty bucket)
+    -- Check for water bucket
     local hasItem = RSGCore.Functions.HasItem('water_bucket', 1)
 
     if not hasItem then
         lib.notify({ title = locale('cl_lang_15'), type = 'error', duration = 5000 })
         return
     end
+    
+    -- Check if bucket is empty (0 uses)
+    local isEmpty = lib.callback.await('rex-farming:server:checkemptybucket', false)
+    
+    if not isEmpty then
+        lib.notify({ title = locale('sv_lang_22'), type = 'error', duration = 5000 })
+        return
+    end
 
     collectingWater = true
     LocalPlayer.state:set("inv_busy", true, true)
+    
+    -- Get player ped and start animation
+    local playerPed = PlayerPedId()
+    FreezeEntityPosition(playerPed, true)
+    TaskStartScenarioInPlace(playerPed, joaat('WORLD_HUMAN_BUCKET_FILL'), 0, true)
     
     local success = lib.progressBar({
         duration = Config.CollectWaterTime or 10000,
@@ -52,6 +65,10 @@ RegisterNetEvent('rex-farming:client:collectwater', function()
         },
         label = locale('cl_lang_16'),
     })
+    
+    -- Clear animation
+    ClearPedTasksImmediately(playerPed)
+    FreezeEntityPosition(playerPed, false)
     
     LocalPlayer.state:set("inv_busy", false, true)
     collectingWater = false

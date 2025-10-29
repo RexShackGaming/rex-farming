@@ -3,7 +3,7 @@ rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aw
 game 'rdr3'
 
 description 'rex-farming'
-version '2.1.3'
+version '2.1.4'
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -20,7 +20,8 @@ client_scripts {
     'client/modules/placeprop.lua',
     'client/modules/collectwater.lua',
     'client/modules/collectfertilizer.lua',
-    'client/modules/vegmod.lua'
+    'client/modules/vegmod.lua',
+    'client/modules/fillbucket.lua'
 }
 
 server_scripts {

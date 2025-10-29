@@ -427,11 +427,20 @@ RegisterNetEvent('rex-farming:client:waterplant', function(data)
         return
     end
 
-    -- Check for water bucket with uses > 0
+    -- Check for water bucket
     local hasWaterBucket = RSGCore.Functions.HasItem('water_bucket', 1)
 
     if not hasWaterBucket then
         lib.notify({ title = locale('cl_lang_9'), type = 'error', duration = 5000 })
+        inplantmenu = false
+        return
+    end
+    
+    -- Check if bucket has uses remaining
+    local hasUses = lib.callback.await('rex-farming:server:checkbuckethasuses', false)
+    
+    if not hasUses then
+        lib.notify({ title = locale('sv_lang_19'), type = 'error', duration = 5000 })
         inplantmenu = false
         return
     end

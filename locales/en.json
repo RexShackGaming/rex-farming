@@ -70,5 +70,8 @@
     "sv_lang_20" : "Please wait before feeding again",
     "sv_lang_21" : "No fertilizer found",
     "sv_lang_22" : "Water bucket is not empty",
-    "sv_lang_23" : "This fertilizer has already been collected"
+    "sv_lang_23" : "This fertilizer has already been collected",
+    "sv_lang_24" : "Plant Watered - %s use%s remaining",
+    "sv_lang_25" : "Plant Watered - Bucket is now empty",
+    "cl_lang_50" : "[E] Fill Water Bucket"
 }

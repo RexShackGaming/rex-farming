@@ -467,7 +467,14 @@ AddEventHandler('rex-farming:server:waterPlant', function(plantid)
     local newUses = currentUses - 1
     local newDescription = newUses > 0 and ('Water Bucket - ' .. newUses .. ' use' .. (newUses > 1 and 's' or '') .. ' left') or 'Empty Water Bucket'
     Player.Functions.AddItem('water_bucket', 1, nil, {uses = newUses, description = newDescription})
-    TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items['water_bucket'], 'remove', 1)
+    
+    -- Notify player of remaining uses
+    if newUses > 0 then
+        local usesText = newUses > 1 and 's' or ''
+        TriggerClientEvent('ox_lib:notify', src, {title = string.format(locale('sv_lang_24'), newUses, usesText), type = 'success', duration = 3000 })
+    else
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_25'), type = 'inform', duration = 3000 })
+    end
     
     -- Set cooldown
     WaterCooldowns[citizenid] = os.time()
@@ -608,6 +615,54 @@ AddEventHandler('rex-farming:server:getPlants', function()
 end)
 
 ---------------------------------------------
+-- check if water bucket is empty
+---------------------------------------------
+lib.callback.register('rex-farming:server:checkemptybucket', function(source)
+    local src = source
+    local Player = RSGCore.Functions.GetPlayer(src)
+    
+    if not Player then 
+        return false
+    end
+    
+    local item = Player.Functions.GetItemByName('water_bucket')
+    
+    if not item then
+        return false
+    end
+    
+    -- Get current uses, default to 0 if no metadata
+    local currentUses = (item.info and item.info.uses) or 0
+    
+    -- Return true only if bucket is empty (0 uses)
+    return (currentUses == 0)
+end)
+
+---------------------------------------------
+-- check if water bucket has uses
+---------------------------------------------
+lib.callback.register('rex-farming:server:checkbuckethasuses', function(source)
+    local src = source
+    local Player = RSGCore.Functions.GetPlayer(src)
+    
+    if not Player then 
+        return false
+    end
+    
+    local item = Player.Functions.GetItemByName('water_bucket')
+    
+    if not item then
+        return false
+    end
+    
+    -- Get current uses, default to 0 if no metadata
+    local currentUses = (item.info and item.info.uses) or 0
+    
+    -- Return true only if bucket has uses remaining (> 0)
+    return (currentUses > 0)
+end)
+
+---------------------------------------------
 -- refresh water bucket
 ---------------------------------------------
 RegisterServerEvent('rex-farming:server:refreshwaterbucket')
@@ -628,7 +683,6 @@ AddEventHandler('rex-farming:server:refreshwaterbucket', function()
     if currentUses == 0 then
         Player.Functions.RemoveItem('water_bucket', 1, item.slot)
         Player.Functions.AddItem('water_bucket', 1, nil, {uses = 5, description = 'Water Bucket - 5 uses left'})
-        TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items['water_bucket'], 'add', 1)
     else
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_22'), type = 'error', duration = 3000 })
     end
