@@ -3,7 +3,7 @@ rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aw
 game 'rdr3'
 
 description 'rex-farming'
-version '2.1.5'
+version '2.1.6'
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -49,6 +49,7 @@ lua54 'yes'
 
 escrow_ignore {
     'client/*',
+    'client/modules/*',
     'installation/*',
     'locales/*',
     'shared/*',

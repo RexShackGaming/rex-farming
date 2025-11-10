@@ -43,7 +43,7 @@ end)
 ---------------------------------------------
 RSGCore.Functions.CreateUseableItem('carrotseed', function(source)
     local src = source
-    TriggerClientEvent('rex-farming:client:preplantseed', src, 'carrot', 'CRP_CARROTS_SAP_BA_SIM', 'CRP_CARROTS_SAP_BA_SIM', 'CRP_CARROTS_BA_SIM', 'carrotseed')
+    TriggerClientEvent('rex-farming:client:preplantseed', src, 'carrot', 'CRP_CARROTS_SAP_BA_SIM', 'CRP_CARROTS_BA_SIM', 'CRP_CARROTS_AA_SIM', 'carrotseed')
 end)
 
 ---------------------------------------------
@@ -51,7 +51,7 @@ end)
 ---------------------------------------------
 RSGCore.Functions.CreateUseableItem('potatoseed', function(source)
     local src = source
-    TriggerClientEvent('rex-farming:client:preplantseed', src, 'potato', 'crp_potato_aa_sim', 'crp_potato_aa_sim', 'crp_potato_sap_aa_sim', 'potatoseed')
+    TriggerClientEvent('rex-farming:client:preplantseed', src, 'potato', 'crp_potato_sap_aa_sim', 'crp_potato_aa_sim', 'crp_potato_har_aa_sim', 'potatoseed')
 end)
 
 ---------------------------------------------
@@ -71,16 +71,21 @@ RSGCore.Functions.CreateUseableItem('tomatoseed', function(source)
 end)
 
 ---------------------------------------------
--- create plant id (cryptographically secure)
+-- create plant id (unique and timestamped)
 ---------------------------------------------
 local function CreatePlantId()
     local UniqueFound = false
     local plantid = nil
     while not UniqueFound do
-        -- Use more secure random generation
-        plantid = math.random(100000, 999999) .. '-' .. os.time() .. '-' .. math.random(1000, 9999)
-        local result = MySQL.prepare.await("SELECT COUNT(*) as count FROM rex_farming WHERE plantid = ?", { plantid })
-        if result == 0 then
+        -- Generate unique ID with timestamp + random components
+        local timestamp = os.time()
+        local microseconds = math.random(100000, 999999)
+        local rand1 = math.random(10000, 99999)
+        local rand2 = math.random(10000, 99999)
+        plantid = rand1 .. '-' .. timestamp .. '-' .. microseconds .. '-' .. rand2
+        
+        local result = MySQL.query.await("SELECT COUNT(*) as count FROM rex_farming WHERE plantid = ?", { plantid })
+        if result and result[1] and result[1].count == 0 then
             UniqueFound = true
         end
     end
@@ -278,12 +283,8 @@ AddEventHandler('rex-farming:server:plantnewseed', function(outputitem, inputite
 end)
 
 ---------------------------------------------
--- check plant (with mutex lock) - DEPRECATED, using cooldown system instead
----------------------------------------------
-RegisterServerEvent('rex-farming:server:plantHasBeenHarvested')
-AddEventHandler('rex-farming:server:plantHasBeenHarvested', function(plantId)
-    -- No longer needed - cooldown system in harvestPlant handles anti-spam
-end)
+-- DEPRECATED EVENT - NO LONGER USED
+-- Cooldown system in harvestPlant handles anti-spam
 
 ---------------------------------------------
 -- distory plant (law)
@@ -360,6 +361,14 @@ AddEventHandler('rex-farming:server:harvestPlant', function(plantId)
         return
     end
     
+    -- SERVER-SIDE distance check (prevent harvesting from anywhere)
+    local playerCoords = GetEntityCoords(GetPlayerPed(src))
+    local distance = #(playerCoords - vector3(plantData.x, plantData.y, plantData.z))
+    if distance > 3.0 then
+        TriggerClientEvent('ox_lib:notify', src, {title = 'Too far away', type = 'error', duration = 3000 })
+        return
+    end
+    
     -- SERVER-SIDE growth validation (don't trust client)
     if plantData.growth < 100 then
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_16'), type = 'error', duration = 3000 })
@@ -385,13 +394,19 @@ AddEventHandler('rex-farming:server:harvestPlant', function(plantId)
             local quality = math.ceil(plantData.quality)
             hasFound = true
 
-            if quality > 0 and quality <= 25 then -- poor
-                poorQuality = true
-            elseif quality >= 25 and quality <= 75 then -- good
-                goodQuality = true
-            elseif quality >= 75 then -- excellent
-                exellentQuality = true
-            end
+             if quality <= 25 then -- poor
+                 poorQuality = true
+                 goodQuality = false
+                 exellentQuality = false
+             elseif quality >= 75 then -- excellent (check first to avoid overlap)
+                 poorQuality = false
+                 goodQuality = false
+                 exellentQuality = true
+             else -- good (25 < quality < 75)
+                 poorQuality = false
+                 goodQuality = true
+                 exellentQuality = false
+             end
             break
         end
     end
@@ -455,8 +470,13 @@ AddEventHandler('rex-farming:server:waterPlant', function(plantid)
         return
     end
     
-    -- Get current uses, default to 0 if no metadata
-    local currentUses = (item.info and item.info.uses) or 0
+    -- Get current uses with strict validation
+    if not item.info or not item.info.uses or type(item.info.uses) ~= 'number' then
+        TriggerClientEvent('ox_lib:notify', src, {title = 'Invalid water bucket', type = 'error', duration = 3000 })
+        return
+    end
+    
+    local currentUses = item.info.uses
     
     if currentUses <= 0 then
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_19'), type = 'error', duration = 3000 })
@@ -479,17 +499,46 @@ AddEventHandler('rex-farming:server:waterPlant', function(plantid)
     -- Set cooldown
     WaterCooldowns[citizenid] = os.time()
 
+    -- Find plant and validate distance
+    local plantData = nil
+    for _, v in pairs(Config.FarmPlants) do
+        if v.id == plantid then
+            plantData = v
+            break
+        end
+    end
+    
+    if not plantData then
+        print('[rex-farming] Error: Plant not found - ' .. plantid)
+        return
+    end
+    
+    -- SERVER-SIDE distance check for watering
+    local playerCoords = GetEntityCoords(GetPlayerPed(src))
+    local distance = #(playerCoords - vector3(plantData.x, plantData.y, plantData.z))
+    if distance > 3.0 then
+        TriggerClientEvent('ox_lib:notify', src, {title = 'Too far away', type = 'error', duration = 3000 })
+        return
+    end
+    
     -- Update database of new thirst value
     local result = MySQL.query.await('SELECT properties FROM rex_farming WHERE plantid = ?', { plantid })
     if not result or not result[1] then 
-        print('[rex-farming] Error: Plant not found - ' .. plantid)
+        print('[rex-farming] Error: Plant not found in DB - ' .. plantid)
         return 
     end
     
-    local plantData = json.decode(result[1].properties)
-    plantData.thirst = math.min((plantData.thirst or 0) + Config.ThirstIncrease, 100)
-    -- Remove runtime-only flags
-    plantData.beingHarvested = nil
+     plantData = json.decode(result[1].properties)
+     
+     -- Validate plant data structure
+     if type(plantData) ~= 'table' or not plantData.id then
+         TriggerClientEvent('ox_lib:notify', src, {title = 'Plant data corrupted', type = 'error', duration = 3000 })
+         return
+     end
+     
+     plantData.thirst = math.min((plantData.thirst or 0) + Config.ThirstIncrease, 100)
+     -- Remove runtime-only flags
+     plantData.beingHarvested = nil
     
     MySQL.update.await('UPDATE rex_farming SET properties = ? WHERE plantid = ?', 
         { json.encode(plantData), plantid }
@@ -517,29 +566,58 @@ AddEventHandler('rex-farming:server:feedPlant', function(plantid)
     
     local hasItem = RSGCore.Functions.HasItem(src, 'fertilizer', 1)
 
-    if not hasItem then
-        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_21'), type = 'error', duration = 3000 })
-        return
-    end
+     if not hasItem then
+         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_lang_21'), type = 'error', duration = 3000 })
+         return
+     end
+     
+     -- Find plant and validate distance BEFORE database operations
+     local plantData = nil
+     for _, v in pairs(Config.FarmPlants) do
+         if v.id == plantid then
+             plantData = v
+             break
+         end
+     end
+     
+     if not plantData then
+         TriggerClientEvent('ox_lib:notify', src, {title = 'Plant not found', type = 'error', duration = 3000 })
+         return
+     end
+     
+     -- SERVER-SIDE distance check for feeding
+     local playerCoords = GetEntityCoords(GetPlayerPed(src))
+     local distance = #(playerCoords - vector3(plantData.x, plantData.y, plantData.z))
+     if distance > 3.0 then
+         TriggerClientEvent('ox_lib:notify', src, {title = 'Too far away', type = 'error', duration = 3000 })
+         return
+     end
 
-    -- Set cooldown
-    FeedCooldowns[citizenid] = os.time()
+     -- Set cooldown
+     FeedCooldowns[citizenid] = os.time()
+     
+     -- Update database of new hunger value
+     local result = MySQL.query.await('SELECT properties FROM rex_farming WHERE plantid = ?', { plantid })
+     if not result or not result[1] then 
+         TriggerClientEvent('ox_lib:notify', src, {title = 'Plant data corrupted', type = 'error', duration = 3000 })
+         return 
+     end
     
-    -- Update database of new hunger value
-    local result = MySQL.query.await('SELECT properties FROM rex_farming WHERE plantid = ?', { plantid })
-    if not result or not result[1] then 
-        print('[rex-farming] Error: Plant not found - ' .. plantid)
-        return 
-    end
-    
-    local plantData = json.decode(result[1].properties)
-    plantData.hunger = math.min((plantData.hunger or 0) + Config.HungerIncrease, 100)
-    -- Remove runtime-only flags
-    plantData.beingHarvested = nil
-    
-    MySQL.update.await('UPDATE rex_farming SET properties = ? WHERE plantid = ?', 
-        { json.encode(plantData), plantid }
-    )
+     local plantData = json.decode(result[1].properties)
+     
+     -- Validate plant data structure
+     if type(plantData) ~= 'table' or not plantData.id then
+         TriggerClientEvent('ox_lib:notify', src, {title = 'Plant data corrupted', type = 'error', duration = 3000 })
+         return
+     end
+     
+     plantData.hunger = math.min((plantData.hunger or 0) + Config.HungerIncrease, 100)
+     -- Remove runtime-only flags
+     plantData.beingHarvested = nil
+     
+     MySQL.update.await('UPDATE rex_farming SET properties = ? WHERE plantid = ?', 
+         { json.encode(plantData), plantid }
+     )
     
     TriggerEvent('rex-farming:server:updatePlants')
     Player.Functions.RemoveItem('fertilizer', 1)

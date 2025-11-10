@@ -30,29 +30,29 @@ Config.EnableServerNotify = false  -- Enable server console notifications for de
 ---------------------------------
 -- Plant Thirst System
 ---------------------------------
-Config.StartingThirst    = 30   -- Starting plant thirst percentage (0-100)
+Config.StartingThirst    = 50   -- Starting plant thirst percentage (0-100)
 Config.ThirstIncrease    = 100  -- Thirst gained when watered
-Config.ThirstDecrease    = 1    -- Thirst lost per growth cycle
-Config.StartDegrade      = 25   -- Thirst level where quality starts degrading
+Config.ThirstDecrease    = 2    -- Thirst lost per growth cycle
+Config.StartDegrade      = 15   -- Thirst level where quality starts degrading
 
 ---------------------------------
 -- Plant Hunger System
 ---------------------------------
-Config.StartingHunger    = 30   -- Starting plant hunger percentage (0-100)
+Config.StartingHunger    = 50   -- Starting plant hunger percentage (0-100)
 Config.HungerIncrease    = 100  -- Hunger gained when fertilized
-Config.HungerDecrease    = 1    -- Hunger lost per growth cycle
+Config.HungerDecrease    = 2    -- Hunger lost per growth cycle
 
 ---------------------------------
 -- Plant Growth System
 ---------------------------------
-Config.GrowthIncrease    = 1    -- Base growth per cycle
-Config.GrowthBoostMin    = 1    -- Min bonus growth with fertilizer
-Config.GrowthBoostMax    = 3    -- Max bonus growth with fertilizer
+Config.GrowthIncrease    = 2    -- Base growth per cycle
+Config.GrowthBoostMin    = 2    -- Min bonus growth with fertilizer
+Config.GrowthBoostMax    = 5    -- Max bonus growth with fertilizer
 
 ---------------------------------
 -- Plant Quality System
 ---------------------------------
-Config.QualityDegrade    = 5    -- Quality lost per cycle when thirst is low
+Config.QualityDegrade    = 2    -- Quality lost per cycle when thirst is low
 
 ---------------------------------
 -- Collection Times (milliseconds)
