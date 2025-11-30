@@ -46,15 +46,3 @@ data_file 'DLC_ITYP_REQUEST' 'stream/prop_weed_ytyp.ytyp'
 this_is_a_map 'yes'
 
 lua54 'yes'
-
-escrow_ignore {
-    'client/*',
-    'client/modules/*',
-    'installation/*',
-    'locales/*',
-    'shared/*',
-    'server/*',
-    'stream/*',
-    'LICENSE.md',
-    'README.md'
-}
